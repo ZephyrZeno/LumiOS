@@ -1,0 +1,35 @@
+# Build outputs
+out/
+builddir/
+build/
+*.o
+*.a
+*.so
+*.d
+
+# Meson
+subprojects/
+**/builddir/
+
+# Third party (Skia etc, too large for git)
+third_party/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Emulator screenshots
+emulator_screenshots/
+
+# Temporary
+*.log
+*.tmp
+core.*
+core.[0-9]*

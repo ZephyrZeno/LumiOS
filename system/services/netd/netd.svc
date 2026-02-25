@@ -1,0 +1,25 @@
+# netd.svc - Network Manager Service / 网络管理服务
+# ================================================
+
+[service]
+name = netd
+description = Network Manager
+exec = /usr/sbin/netd
+type = simple
+user = root
+group = root
+
+[dependencies]
+after = devd
+
+[restart]
+policy = always
+delay = 2000
+max_retries = 5
+
+[cgroup]
+memory_max = 64M
+cpu_weight = 50
+
+[environment]
+PATH = /usr/sbin:/usr/bin:/sbin:/bin

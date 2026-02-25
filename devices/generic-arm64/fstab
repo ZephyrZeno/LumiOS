@@ -1,0 +1,9 @@
+# /etc/fstab - LumiOS generic-arm64 (QEMU virt)
+# LumiOS 文件系统挂载表 - QEMU 虚拟机
+#
+# <device>       <mount>    <type>   <options>            <dump> <pass>
+/dev/vda1        /boot      ext4     ro,noatime           0      2
+/dev/vda2        /          erofs    ro                   0      1
+/dev/vda3        /data      f2fs     rw,noatime,discard   0      2
+tmpfs            /tmp       tmpfs    nosuid,nodev,mode=1777 0    0
+tmpfs            /run       tmpfs    nosuid,nodev,mode=0755 0    0
