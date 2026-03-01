@@ -145,6 +145,13 @@ cp "$SYSROOT/sbin"/* "$ROOTFS/sbin/" 2>/dev/null || true
 cp "$SYSROOT/usr/bin"/* "$ROOTFS/usr/bin/" 2>/dev/null || true
 cp "$SYSROOT/usr/sbin"/* "$ROOTFS/usr/sbin/" 2>/dev/null || true
 
+# Install LumiScript built-in apps (.lmpk) / 安装 LumiScript 内置应用
+mkdir -p "$ROOTFS/usr/share/lumios/apps"
+if [ -d "$TOP/system/apps" ]; then
+    cp "$TOP/system/apps"/*.lmpk "$ROOTFS/usr/share/lumios/apps/" 2>/dev/null && \
+        ok "Installed $(ls "$TOP/system/apps"/*.lmpk 2>/dev/null | wc -l) built-in apps" || true
+fi
+
 # Essential symlinks (remove existing dirs first) / 必要符号链接（先删除已有目录）
 rm -rf "$ROOTFS/init" "$ROOTFS/lib" "$ROOTFS/lib64"
 ln -sf /sbin/lumid "$ROOTFS/init"

@@ -275,7 +275,8 @@ make run-vm                       # QEMU 运行
   - PipeWire 集成，每流音量控制，持久化配置
 - [x] **渲染抽象层 (lumi-render)** — Cairo/Skia 双后端
 - [x] **UI 控件工具包 (lumi-toolkit)** — 布局引擎 + 控件渲染 + 事件分发
-- [x] **第一方应用** — 浏览器/相机/文件管理器/终端/设置/电话/消息
+- [x] **第一方应用** — 浏览器/相机/文件管理器/终端/设置/电话/消息 (C 版 + LumiScript 版)
+- [x] **LumiScript 系统应用** — 7 个内置应用从 C 重写为 LumiScript，编译为 .lmpk 字节码包
 - [x] **设备适配 (QEMU/VM)** — 内核配置 + rootfs + 镜像脚本
 - [x] **lumid 服务配置 (.svc)** — devd/dbusd/audiod/bootanim/netd/compositor/shell
 - [x] **Linux 6.1.73 LTS aarch64 内核编译** — QEMU virt 平台
@@ -312,6 +313,11 @@ make run-vm                       # QEMU 运行
 - [x] 内置应用
 - [x] 应用开发 SDK → 已迁移至 [LumiSDK](https://github.com/ZephyrZeno/LumiSDK)
 - [x] LumiScript 语言 → 已迁移至 [LumiScript](https://github.com/ZephyrZeno/LumiScript)
+- [x] LumiScript 字节码 VM — 编译器 + 栈式 VM + GC + C FFI
+- [x] LumiScript 内置应用 — 7 个系统应用从 C 重写为 .ls，编译为 .lmpk 字节码包
+- [x] Shell 脚本应用加载 — lumi-vm-ffi 动态加载 + UI 树渲染 + 事件触发
+- [x] UI 现代化渲染 — 圆角/渐变/阴影/毛玻璃/iOS 风格 Switch
+- [ ] Shell 事件系统端到端验证 (待确认)
 - [ ] 设备适配 (Google Pixel)
 - [ ] 设备适配 (Xiaomi 14 Pro)
 - [ ] OTA 更新系统

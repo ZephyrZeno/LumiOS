@@ -126,6 +126,28 @@ sudo apt install -y qemu-system-aarch64 qemu-utils
 cd system/core/lumid && gcc -Wall -O2 -std=c11 -o lumid src/*.c
 ```
 
+## Development Status
+
+- [x] System architecture + directory structure
+- [x] Init system (lumid) — service config, dependency sort, cgroup v2, process monitor
+- [x] Package manager (lmpkg) → [LumiPkg](https://github.com/ZephyrZeno/LumiPkg)
+- [x] Wayland compositor (lumi-compositor) — wlroots, touch-optimized
+- [x] Mobile shell (lumi-shell) — home/lockscreen/notifications/multitask/statusbar/boot animation
+- [x] Render abstraction (lumi-render) — Cairo/Skia dual backend
+- [x] UI toolkit (lumi-toolkit) — layout engine + widget rendering + event dispatch
+- [x] System services — netd, audiod, bluetoothd, sensord, telephonyd
+- [x] Security sandbox — Landlock + seccomp + AppArmor
+- [x] Android compatibility layer — namespace containers + binder proxy
+- [x] Built-in apps — Browser/Camera/Files/Terminal/Settings/Phone/Messages
+- [x] LumiScript bytecode VM — compiler + stack VM + GC + C FFI
+- [x] LumiScript apps — 7 system apps rewritten from C to .ls, compiled to .lmpk bytecode
+- [x] Shell script app loading — lumi-vm-ffi dynamic loading + UI tree rendering + event firing
+- [x] UI modernization — rounded corners/gradients/shadows/frosted glass/iOS-style Switch
+- [ ] Shell event system end-to-end verification
+- [ ] Device adaptation (Google Pixel / Xiaomi 14 Pro)
+- [ ] OTA update system
+- [ ] Full VM boot test (Ubuntu + QEMU)
+
 ## Related Projects
 
 | Project | Description |
