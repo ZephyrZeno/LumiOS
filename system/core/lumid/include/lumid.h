@@ -45,6 +45,9 @@
 #define LUMID_MAX_PATH_LEN     256
 #define LUMID_MAX_LINE_LEN     1024
 #define LUMID_MAX_LOG_SIZE     (1024 * 1024)  /* 1MB per service log */
+#define LUMID_MAX_IPC_TYPE_LEN 64
+#define LUMID_MAX_IPC_PAYLOAD  256
+#define LUMID_MAX_EVENTS       64
 
 /* === Service state / 服务状态 === */
 typedef enum {
@@ -152,6 +155,8 @@ typedef enum {
     CMD_ENABLE,
     CMD_DISABLE,
     CMD_LOG,
+    CMD_EVENT_PUBLISH,
+    CMD_EVENT_LIST,
     CMD_POWEROFF,
     CMD_REBOOT,
 } ipc_cmd_t;
@@ -159,16 +164,25 @@ typedef enum {
 typedef struct {
     ipc_cmd_t  cmd;
     char       service_name[LUMID_MAX_NAME_LEN];
+    char       channel[LUMID_MAX_NAME_LEN];
+    char       event_type[LUMID_MAX_IPC_TYPE_LEN];
+    char       source[LUMID_MAX_NAME_LEN];
+    char       payload[LUMID_MAX_IPC_PAYLOAD];
     int        flags;
 } ipc_request_t;
 
 typedef struct {
     int         code;        /* 0 = success / 成功 */
     char        message[LUMID_MAX_PATH_LEN];
+    char        channel[LUMID_MAX_NAME_LEN];
+    char        event_type[LUMID_MAX_IPC_TYPE_LEN];
+    char        source[LUMID_MAX_NAME_LEN];
+    char        payload[LUMID_MAX_IPC_PAYLOAD];
     svc_state_t state;
     pid_t       pid;
     int         exit_code;
     uint64_t    uptime;
+    uint64_t    event_id;
 } ipc_response_t;
 
 /* === Function declarations / 函数声明 === */

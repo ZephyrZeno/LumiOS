@@ -19,7 +19,7 @@ SRCS     := src/main.c \
 
 OBJS     := $(patsubst src/%.c,$(BUILD_DIR)/%.o,$(SRCS))
 TARGET   := $(BUILD_DIR)/lumid
-CTL_SRCS := src/lumictl.c src/socket.c src/util.c
+CTL_SRCS := src/lumictl.c src/socket.c src/util.c src/log.c
 CTL_OBJS := $(patsubst src/%.c,$(BUILD_DIR)/ctl_%.o,$(CTL_SRCS))
 CTL_TARGET := $(BUILD_DIR)/lumictl
 
@@ -52,10 +52,16 @@ install: $(TARGET) $(CTL_TARGET)
 clean:
 	rm -rf $(BUILD_DIR)
 
-test:
+test: | $(BUILD_DIR)
 	@echo "Running lumid unit tests..."
-	$(CC) $(CFLAGS) -Iinclude -DLUMID_TEST tests/test_config.c src/config.c src/util.c src/log.c -o $(BUILD_DIR)/test_config
-	$(BUILD_DIR)/test_config
-	$(CC) $(CFLAGS) -Iinclude -DLUMID_TEST tests/test_service.c src/service.c src/config.c src/util.c src/log.c -o $(BUILD_DIR)/test_service
-	$(BUILD_DIR)/test_service
+	@if [ -f tests/test_config.c ]; then \
+		$(CC) $(CFLAGS) -Iinclude -DLUMID_TEST tests/test_config.c src/config.c src/util.c src/log.c -o $(BUILD_DIR)/test_config && \
+		$(BUILD_DIR)/test_config; \
+	fi
+	@if [ -f tests/test_service.c ]; then \
+		$(CC) $(CFLAGS) -Iinclude -DLUMID_TEST tests/test_service.c src/service.c src/config.c src/util.c src/log.c -o $(BUILD_DIR)/test_service && \
+		$(BUILD_DIR)/test_service; \
+	fi
+	$(CC) $(CFLAGS) -Iinclude -DLUMID_TEST tests/test_socket.c src/socket.c src/util.c src/log.c -o $(BUILD_DIR)/test_socket
+	$(BUILD_DIR)/test_socket
 	@echo "All tests passed"

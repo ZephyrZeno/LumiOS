@@ -21,6 +21,21 @@ typedef enum {
 } lumi_widget_type_t;
 
 typedef enum {
+    LUMI_GLASS_ULTRA_THIN = 0,
+    LUMI_GLASS_THIN,
+    LUMI_GLASS_REGULAR,
+    LUMI_GLASS_THICK,
+    LUMI_GLASS_CHROMATIC,
+} lumi_glass_variant_t;
+
+typedef enum {
+    LUMI_MOTION_RESPONSIVE = 0,
+    LUMI_MOTION_GENTLE,
+    LUMI_MOTION_BOUNCY,
+    LUMI_MOTION_STIFF,
+} lumi_motion_preset_t;
+
+typedef enum {
     LUMI_LAYOUT_ROW,
     LUMI_LAYOUT_COLUMN,
 } lumi_layout_dir_t;
@@ -41,6 +56,13 @@ void lumi_widget_set_layout(lumi_widget_t *w, lumi_layout_dir_t dir);
 void lumi_widget_set_padding(lumi_widget_t *w, float pad);
 void lumi_widget_set_spacing(lumi_widget_t *w, float spacing);
 void lumi_widget_set_color(lumi_widget_t *w, uint32_t rgba);
+void lumi_widget_set_opacity(lumi_widget_t *w, float opacity);
+void lumi_widget_set_blur(lumi_widget_t *w, float blur_radius);
+void lumi_widget_set_corner_radius(lumi_widget_t *w, float radius);
+void lumi_widget_set_border(lumi_widget_t *w, float width, uint32_t color);
+void lumi_widget_set_shadow(lumi_widget_t *w, float blur_radius, uint32_t color);
+void lumi_widget_apply_glass(lumi_widget_t *w, lumi_glass_variant_t variant);
+void lumi_widget_apply_motion(lumi_widget_t *w, lumi_motion_preset_t preset);
 void lumi_widget_on_click(lumi_widget_t *w, lumi_widget_callback_t cb, void *ud);
 
 /* Layout */

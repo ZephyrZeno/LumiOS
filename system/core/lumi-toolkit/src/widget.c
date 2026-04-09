@@ -19,6 +19,17 @@ struct lumi_widget {
     float padding;
     float spacing;
     uint32_t color;
+    float opacity;
+    float blur_radius;
+    float corner_radius;
+    float border_width;
+    uint32_t border_color;
+    float shadow_blur;
+    uint32_t shadow_color;
+    int motion_duration_ms;
+    float spring_stiffness;
+    float spring_damping;
+    float spring_mass;
     lumi_layout_dir_t layout_dir;
 
     lumi_widget_t *children[MAX_CHILDREN];
@@ -33,6 +44,8 @@ lumi_widget_t *lumi_widget_create(lumi_widget_type_t type) {
     if (!w) return NULL;
     w->type = type;
     w->color = 0xFFFFFFFF;
+    w->opacity = 1.0f;
+    w->spring_mass = 1.0f;
     return w;
 }
 
@@ -75,6 +88,81 @@ void lumi_widget_set_spacing(lumi_widget_t *w, float spacing) {
 
 void lumi_widget_set_color(lumi_widget_t *w, uint32_t rgba) {
     if (w) w->color = rgba;
+}
+
+void lumi_widget_set_opacity(lumi_widget_t *w, float opacity) {
+    if (!w) return;
+    if (opacity < 0.0f) opacity = 0.0f;
+    if (opacity > 1.0f) opacity = 1.0f;
+    w->opacity = opacity;
+}
+
+void lumi_widget_set_blur(lumi_widget_t *w, float blur_radius) {
+    if (w) w->blur_radius = blur_radius < 0.0f ? 0.0f : blur_radius;
+}
+
+void lumi_widget_set_corner_radius(lumi_widget_t *w, float radius) {
+    if (w) w->corner_radius = radius < 0.0f ? 0.0f : radius;
+}
+
+void lumi_widget_set_border(lumi_widget_t *w, float width, uint32_t color) {
+    if (!w) return;
+    w->border_width = width < 0.0f ? 0.0f : width;
+    w->border_color = color;
+}
+
+void lumi_widget_set_shadow(lumi_widget_t *w, float blur_radius, uint32_t color) {
+    if (!w) return;
+    w->shadow_blur = blur_radius < 0.0f ? 0.0f : blur_radius;
+    w->shadow_color = color;
+}
+
+void lumi_widget_apply_glass(lumi_widget_t *w, lumi_glass_variant_t variant) {
+    static const struct {
+        float blur_radius;
+        float opacity;
+        float corner_radius;
+        uint32_t tint;
+        uint32_t border;
+        float shadow_blur;
+        uint32_t shadow;
+    } presets[] = {
+        { 12.0f, 0.45f, 16.0f, 0xFFFFFF72, 0xFFFFFF22, 14.0f, 0x0F172A18 },
+        { 20.0f, 0.60f, 18.0f, 0xFFFFFF99, 0xFFFFFF33, 18.0f, 0x0F172A20 },
+        { 30.0f, 0.72f, 22.0f, 0xFFFFFFB8, 0xFFFFFF40, 24.0f, 0x0F172A24 },
+        { 40.0f, 0.85f, 24.0f, 0xFFFFFFD8, 0xFFFFFF4A, 32.0f, 0x0F172A28 },
+        { 30.0f, 0.65f, 22.0f, 0xCFE2FFB0, 0xFFFFFF46, 28.0f, 0x0F172A24 },
+    };
+    int index = (variant < LUMI_GLASS_ULTRA_THIN || variant > LUMI_GLASS_CHROMATIC)
+        ? LUMI_GLASS_REGULAR : variant;
+    if (!w) return;
+    lumi_widget_set_color(w, presets[index].tint);
+    lumi_widget_set_opacity(w, presets[index].opacity);
+    lumi_widget_set_blur(w, presets[index].blur_radius);
+    lumi_widget_set_corner_radius(w, presets[index].corner_radius);
+    lumi_widget_set_border(w, 1.0f, presets[index].border);
+    lumi_widget_set_shadow(w, presets[index].shadow_blur, presets[index].shadow);
+}
+
+void lumi_widget_apply_motion(lumi_widget_t *w, lumi_motion_preset_t preset) {
+    static const struct {
+        int duration_ms;
+        float stiffness;
+        float damping;
+        float mass;
+    } presets[] = {
+        { 350, 400.0f, 28.0f, 1.0f },
+        { 400, 200.0f, 20.0f, 1.0f },
+        { 400, 300.0f, 15.0f, 1.0f },
+        { 300, 500.0f, 30.0f, 1.0f },
+    };
+    int index = (preset < LUMI_MOTION_RESPONSIVE || preset > LUMI_MOTION_STIFF)
+        ? LUMI_MOTION_RESPONSIVE : preset;
+    if (!w) return;
+    w->motion_duration_ms = presets[index].duration_ms;
+    w->spring_stiffness = presets[index].stiffness;
+    w->spring_damping = presets[index].damping;
+    w->spring_mass = presets[index].mass;
 }
 
 void lumi_widget_on_click(lumi_widget_t *w, lumi_widget_callback_t cb, void *ud) {

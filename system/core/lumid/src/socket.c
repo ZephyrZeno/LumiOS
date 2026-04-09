@@ -1,32 +1,145 @@
 /*
- * socket.c - IPC communication via Unix domain socket / 通过 Unix 域套接字的 IPC 通信
+ * socket.c - IPC communication via Unix domain sockets
  *
  * Provides server/client API for lumictl <-> lumid communication.
- * 提供 lumictl 与 lumid 之间的服务端/客户端通信 API。
  */
 
 #define _GNU_SOURCE
+#include <errno.h>
+#include <fcntl.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-#include <errno.h>
-#include <signal.h>
 #include <sys/socket.h>
-#include <sys/un.h>
 #include <sys/stat.h>
-#include <fcntl.h>
+#include <sys/un.h>
+#include <unistd.h>
 
 #include "lumid.h"
 
-/* === Server: create and bind listening socket / 服务端: 创建并绑定监听套接字 === */
+static int read_full(int fd, void *buffer, size_t size)
+{
+    char *cursor = buffer;
+    size_t total = 0;
+
+    while (total < size) {
+        ssize_t n = read(fd, cursor + total, size - total);
+
+        if (n == 0) {
+            return -1;
+        }
+        if (n < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            return -1;
+        }
+        total += (size_t)n;
+    }
+
+    return 0;
+}
+
+static int write_full(int fd, const void *buffer, size_t size)
+{
+    const char *cursor = buffer;
+    size_t total = 0;
+
+    while (total < size) {
+        ssize_t n = write(fd, cursor + total, size - total);
+
+        if (n < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            return -1;
+        }
+        total += (size_t)n;
+    }
+
+    return 0;
+}
+
+#ifndef LUMICTL_BUILD
+typedef struct {
+    char channel[LUMID_MAX_NAME_LEN];
+    char event_type[LUMID_MAX_IPC_TYPE_LEN];
+    char source[LUMID_MAX_NAME_LEN];
+    char payload[LUMID_MAX_IPC_PAYLOAD];
+    uint64_t timestamp_ns;
+    uint64_t event_id;
+} lumid_event_t;
+
+static lumid_event_t g_events[LUMID_MAX_EVENTS];
+static int g_event_count = 0;
+static int g_event_next = 0;
+static uint64_t g_event_next_id = 1;
+
+static void copy_string(char *dst, size_t len, const char *src)
+{
+    size_t used;
+
+    if (!dst || len == 0) {
+        return;
+    }
+    if (!src) {
+        dst[0] = '\0';
+        return;
+    }
+
+    used = strlen(src);
+    if (used >= len) {
+        used = len - 1;
+    }
+    memcpy(dst, src, used);
+    dst[used] = '\0';
+}
+
+static uint64_t record_event(const ipc_request_t *req)
+{
+    lumid_event_t *event;
+
+    if (!req) {
+        return 0;
+    }
+
+    event = &g_events[g_event_next];
+    copy_string(event->channel, sizeof(event->channel), req->channel);
+    copy_string(event->event_type, sizeof(event->event_type), req->event_type);
+    copy_string(event->source, sizeof(event->source), req->source);
+    copy_string(event->payload, sizeof(event->payload), req->payload);
+    event->timestamp_ns = util_monotonic_ns();
+    event->event_id = g_event_next_id++;
+
+    g_event_next = (g_event_next + 1) % LUMID_MAX_EVENTS;
+    if (g_event_count < LUMID_MAX_EVENTS) {
+        g_event_count++;
+    }
+
+    return event->event_id;
+}
+
+static void fill_event_response(ipc_response_t *resp, const lumid_event_t *event)
+{
+    if (!resp || !event) {
+        return;
+    }
+
+    copy_string(resp->message, sizeof(resp->message), "event");
+    copy_string(resp->channel, sizeof(resp->channel), event->channel);
+    copy_string(resp->event_type, sizeof(resp->event_type), event->event_type);
+    copy_string(resp->source, sizeof(resp->source), event->source);
+    copy_string(resp->payload, sizeof(resp->payload), event->payload);
+    resp->uptime = event->timestamp_ns;
+    resp->event_id = event->event_id;
+}
 
 int socket_server_init(const char *path)
 {
     int fd;
     struct sockaddr_un addr;
 
-    /* Remove stale socket file / 移除残留的套接字文件 */
     unlink(path);
 
     fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
@@ -45,7 +158,6 @@ int socket_server_init(const char *path)
         return -1;
     }
 
-    /* Allow all users to connect / 允许所有用户连接 */
     chmod(path, 0666);
 
     if (listen(fd, 8) < 0) {
@@ -58,43 +170,39 @@ int socket_server_init(const char *path)
     return fd;
 }
 
-/* === Server: accept a client connection / 服务端: 接受客户端连接 === */
-
 int socket_server_accept(int server_fd)
 {
     int client_fd = accept4(server_fd, NULL, NULL, SOCK_CLOEXEC);
+
     if (client_fd < 0) {
         if (errno != EAGAIN && errno != EWOULDBLOCK) {
             LOG_E("accept failed: %s", strerror(errno));
         }
         return -1;
     }
+
     return client_fd;
 }
-
-/* === Server: handle an IPC request / 服务端: 处理 IPC 请求 === */
 
 int socket_handle_request(int client_fd)
 {
     ipc_request_t req;
     ipc_response_t resp;
-    ssize_t n;
+    service_t *svc = NULL;
+    uint64_t event_id = 0;
 
     memset(&resp, 0, sizeof(resp));
 
-    n = read(client_fd, &req, sizeof(req));
-    if (n != sizeof(req)) {
-        LOG_W("malformed IPC request (got %zd bytes, expected %zu)",
-              n, sizeof(req));
+    if (read_full(client_fd, &req, sizeof(req)) < 0) {
+        LOG_W("malformed IPC request (expected %zu bytes)", sizeof(req));
         resp.code = -1;
         snprintf(resp.message, sizeof(resp.message), "invalid request");
-        write(client_fd, &resp, sizeof(resp));
+        write_full(client_fd, &resp, sizeof(resp));
         return -1;
     }
 
     LOG_D("IPC request: cmd=%d service='%s'", req.cmd, req.service_name);
 
-    service_t *svc = NULL;
     if (req.service_name[0] != '\0') {
         svc = service_find(req.service_name);
     }
@@ -103,11 +211,14 @@ int socket_handle_request(int client_fd)
     case CMD_START:
         if (!svc) {
             resp.code = -1;
-            snprintf(resp.message, sizeof(resp.message),
-                     "service '%s' not found", req.service_name);
+            snprintf(resp.message,
+                     sizeof(resp.message),
+                     "service '%s' not found",
+                     req.service_name);
         } else {
             resp.code = service_start(svc);
-            snprintf(resp.message, sizeof(resp.message),
+            snprintf(resp.message,
+                     sizeof(resp.message),
                      resp.code == 0 ? "started" : "start failed");
         }
         break;
@@ -115,11 +226,14 @@ int socket_handle_request(int client_fd)
     case CMD_STOP:
         if (!svc) {
             resp.code = -1;
-            snprintf(resp.message, sizeof(resp.message),
-                     "service '%s' not found", req.service_name);
+            snprintf(resp.message,
+                     sizeof(resp.message),
+                     "service '%s' not found",
+                     req.service_name);
         } else {
             resp.code = service_stop(svc);
-            snprintf(resp.message, sizeof(resp.message),
+            snprintf(resp.message,
+                     sizeof(resp.message),
                      resp.code == 0 ? "stopped" : "stop failed");
         }
         break;
@@ -127,11 +241,14 @@ int socket_handle_request(int client_fd)
     case CMD_RESTART:
         if (!svc) {
             resp.code = -1;
-            snprintf(resp.message, sizeof(resp.message),
-                     "service '%s' not found", req.service_name);
+            snprintf(resp.message,
+                     sizeof(resp.message),
+                     "service '%s' not found",
+                     req.service_name);
         } else {
             resp.code = service_restart(svc);
-            snprintf(resp.message, sizeof(resp.message),
+            snprintf(resp.message,
+                     sizeof(resp.message),
                      resp.code == 0 ? "restarted" : "restart failed");
         }
         break;
@@ -139,8 +256,10 @@ int socket_handle_request(int client_fd)
     case CMD_STATUS:
         if (!svc) {
             resp.code = -1;
-            snprintf(resp.message, sizeof(resp.message),
-                     "service '%s' not found", req.service_name);
+            snprintf(resp.message,
+                     sizeof(resp.message),
+                     "service '%s' not found",
+                     req.service_name);
         } else {
             resp.code = 0;
             resp.state = svc->state;
@@ -149,21 +268,22 @@ int socket_handle_request(int client_fd)
             if (svc->state == SVC_STATE_RUNNING && svc->start_time > 0) {
                 resp.uptime = util_monotonic_ns() - svc->start_time;
             }
-            snprintf(resp.message, sizeof(resp.message), "%s",
+            snprintf(resp.message,
+                     sizeof(resp.message),
+                     "%s",
                      service_state_str(svc->state));
         }
         break;
 
     case CMD_STATUS_ALL: {
-        /* Return count in code, details via multiple writes / 通过 code 返回数量 */
+        service_t *iter;
         int count = service_get_count();
-        resp.code = count;
-        snprintf(resp.message, sizeof(resp.message),
-                 "%d services loaded", count);
-        write(client_fd, &resp, sizeof(resp));
 
-        /* Send individual service status / 发送各服务状态 */
-        service_t *iter = service_get_list();
+        resp.code = count;
+        snprintf(resp.message, sizeof(resp.message), "%d services loaded", count);
+        write_full(client_fd, &resp, sizeof(resp));
+
+        iter = service_get_list();
         while (iter) {
             memset(&resp, 0, sizeof(resp));
             resp.state = iter->state;
@@ -173,14 +293,20 @@ int socket_handle_request(int client_fd)
                 resp.uptime = util_monotonic_ns() - iter->start_time;
             }
             snprintf(resp.message, sizeof(resp.message), "%s", iter->name);
-            write(client_fd, &resp, sizeof(resp));
+            write_full(client_fd, &resp, sizeof(resp));
             iter = iter->next;
         }
-        return 0; /* Already sent response / 已发送响应 */
+        return 0;
     }
 
     case CMD_ENABLE:
-        if (svc) {
+        if (!svc) {
+            resp.code = -1;
+            snprintf(resp.message,
+                     sizeof(resp.message),
+                     "service '%s' not found",
+                     req.service_name);
+        } else {
             svc->enabled = true;
             resp.code = 0;
             snprintf(resp.message, sizeof(resp.message), "enabled");
@@ -188,42 +314,85 @@ int socket_handle_request(int client_fd)
         break;
 
     case CMD_DISABLE:
-        if (svc) {
+        if (!svc) {
+            resp.code = -1;
+            snprintf(resp.message,
+                     sizeof(resp.message),
+                     "service '%s' not found",
+                     req.service_name);
+        } else {
             svc->enabled = false;
             resp.code = 0;
             snprintf(resp.message, sizeof(resp.message), "disabled");
         }
         break;
 
+    case CMD_EVENT_PUBLISH:
+        if (req.channel[0] == '\0' || req.event_type[0] == '\0') {
+            resp.code = -1;
+            snprintf(resp.message,
+                     sizeof(resp.message),
+                     "event channel/type required");
+        } else {
+            event_id = record_event(&req);
+            resp.code = 0;
+            copy_string(resp.message, sizeof(resp.message), "event published");
+            copy_string(resp.channel, sizeof(resp.channel), req.channel);
+            copy_string(resp.event_type, sizeof(resp.event_type), req.event_type);
+            copy_string(resp.source, sizeof(resp.source), req.source);
+            copy_string(resp.payload, sizeof(resp.payload), req.payload);
+            resp.event_id = event_id;
+            LOG_I("event published: channel=%s type=%s source=%s",
+                  req.channel,
+                  req.event_type,
+                  req.source[0] != '\0' ? req.source : "(unknown)");
+        }
+        break;
+
+    case CMD_EVENT_LIST: {
+        int count = g_event_count;
+
+        resp.code = count;
+        snprintf(resp.message, sizeof(resp.message), "%d events buffered", count);
+        write_full(client_fd, &resp, sizeof(resp));
+
+        for (int i = 0; i < count; i++) {
+            int index = (g_event_next - count + i + LUMID_MAX_EVENTS) %
+                        LUMID_MAX_EVENTS;
+
+            memset(&resp, 0, sizeof(resp));
+            fill_event_response(&resp, &g_events[index]);
+            write_full(client_fd, &resp, sizeof(resp));
+        }
+        return 0;
+    }
+
     case CMD_POWEROFF:
-        LOG_I("received poweroff command via IPC");
+        LOG_I("%s", "received poweroff command via IPC");
         resp.code = 0;
         snprintf(resp.message, sizeof(resp.message), "powering off");
-        write(client_fd, &resp, sizeof(resp));
-        /* Signal main loop to exit / 通知主循环退出 */
+        write_full(client_fd, &resp, sizeof(resp));
         kill(getpid(), SIGTERM);
         return 0;
 
     case CMD_REBOOT:
-        LOG_I("received reboot command via IPC");
+        LOG_I("%s", "received reboot command via IPC");
         resp.code = 0;
         snprintf(resp.message, sizeof(resp.message), "rebooting");
-        write(client_fd, &resp, sizeof(resp));
+        write_full(client_fd, &resp, sizeof(resp));
         kill(getpid(), SIGTERM);
         return 0;
 
     default:
         resp.code = -1;
-        snprintf(resp.message, sizeof(resp.message), "unknown command %d",
-                 req.cmd);
+        snprintf(resp.message, sizeof(resp.message), "unknown command %d", req.cmd);
         break;
     }
 
-    write(client_fd, &resp, sizeof(resp));
+    write_full(client_fd, &resp, sizeof(resp));
     return 0;
 }
-
-/* === Client: connect to lumid socket / 客户端: 连接到 lumid 套接字 === */
+#endif
 
 int socket_client_connect(const char *path)
 {
@@ -241,8 +410,7 @@ int socket_client_connect(const char *path)
     strncpy(addr.sun_path, path, sizeof(addr.sun_path) - 1);
 
     if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-        fprintf(stderr, "failed to connect to %s: %s\n",
-                path, strerror(errno));
+        fprintf(stderr, "failed to connect to %s: %s\n", path, strerror(errno));
         close(fd);
         return -1;
     }
@@ -250,24 +418,18 @@ int socket_client_connect(const char *path)
     return fd;
 }
 
-/* === Client: send request / 客户端: 发送请求 === */
-
 int socket_send_request(int fd, const ipc_request_t *req)
 {
-    ssize_t n = write(fd, req, sizeof(*req));
-    if (n != sizeof(*req)) {
+    if (write_full(fd, req, sizeof(*req)) < 0) {
         fprintf(stderr, "failed to send request: %s\n", strerror(errno));
         return -1;
     }
     return 0;
 }
 
-/* === Client: receive response / 客户端: 接收响应 === */
-
 int socket_recv_response(int fd, ipc_response_t *resp)
 {
-    ssize_t n = read(fd, resp, sizeof(*resp));
-    if (n != sizeof(*resp)) {
+    if (read_full(fd, resp, sizeof(*resp)) < 0) {
         fprintf(stderr, "failed to receive response: %s\n", strerror(errno));
         return -1;
     }

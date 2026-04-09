@@ -36,6 +36,28 @@ static char *trim(char *str)
     return str;
 }
 
+static void copy_string_field(char *dst, size_t dst_len, const char *src)
+{
+    size_t len;
+
+    if (!dst || dst_len == 0) {
+        return;
+    }
+
+    if (!src) {
+        dst[0] = '\0';
+        return;
+    }
+
+    len = strlen(src);
+    if (len >= dst_len) {
+        len = dst_len - 1;
+    }
+
+    memcpy(dst, src, len);
+    dst[len] = '\0';
+}
+
 /* === Parse key = value from a line / 从一行中解析 key = value === */
 
 int config_parse_value(const char *line, char *key, char *value, size_t max)
@@ -48,7 +70,7 @@ int config_parse_value(const char *line, char *key, char *value, size_t max)
     size_t key_len = (size_t)(eq - line);
     if (key_len >= max)
         key_len = max - 1;
-    strncpy(key, line, key_len);
+    memcpy(key, line, key_len);
     key[key_len] = '\0';
 
     /* Trim key / 修剪键 */
@@ -60,8 +82,7 @@ int config_parse_value(const char *line, char *key, char *value, size_t max)
     const char *v = eq + 1;
     while (isspace((unsigned char)*v))
         v++;
-    strncpy(value, v, max - 1);
-    value[max - 1] = '\0';
+    copy_string_field(value, max, v);
 
     /* Remove trailing whitespace/newline / 移除尾部空白和换行 */
     size_t vlen = strlen(value);
@@ -102,13 +123,11 @@ static int parse_dep_list(const char *str, char out[][LUMID_MAX_NAME_LEN],
 {
     int count = 0;
     char buf[LUMID_MAX_LINE_LEN];
-    strncpy(buf, str, sizeof(buf) - 1);
-    buf[sizeof(buf) - 1] = '\0';
+    copy_string_field(buf, sizeof(buf), str);
 
     char *tok = strtok(buf, " \t,");
     while (tok && count < max_count) {
-        strncpy(out[count], tok, LUMID_MAX_NAME_LEN - 1);
-        out[count][LUMID_MAX_NAME_LEN - 1] = '\0';
+        copy_string_field(out[count], LUMID_MAX_NAME_LEN, tok);
         count++;
         tok = strtok(NULL, " \t,");
     }
@@ -147,7 +166,7 @@ int config_parse_service(const char *path, service_t *svc)
                 continue;
             }
             *end = '\0';
-            strncpy(section, l + 1, sizeof(section) - 1);
+            copy_string_field(section, sizeof(section), l + 1);
             continue;
         }
 
@@ -160,21 +179,21 @@ int config_parse_service(const char *path, service_t *svc)
         /* === [service] section / [service] 段 === */
         if (strcmp(section, "service") == 0) {
             if (strcmp(key, "name") == 0) {
-                strncpy(svc->name, value, LUMID_MAX_NAME_LEN - 1);
+                copy_string_field(svc->name, sizeof(svc->name), value);
             } else if (strcmp(key, "description") == 0) {
-                strncpy(svc->description, value, LUMID_MAX_PATH_LEN - 1);
+                copy_string_field(svc->description, sizeof(svc->description), value);
             } else if (strcmp(key, "exec") == 0) {
-                strncpy(svc->exec_path, value, LUMID_MAX_PATH_LEN - 1);
+                copy_string_field(svc->exec_path, sizeof(svc->exec_path), value);
             } else if (strcmp(key, "args") == 0) {
-                strncpy(svc->exec_args, value, LUMID_MAX_PATH_LEN - 1);
+                copy_string_field(svc->exec_args, sizeof(svc->exec_args), value);
             } else if (strcmp(key, "type") == 0) {
                 svc->type = parse_service_type(value);
             } else if (strcmp(key, "user") == 0) {
-                strncpy(svc->user, value, LUMID_MAX_NAME_LEN - 1);
+                copy_string_field(svc->user, sizeof(svc->user), value);
             } else if (strcmp(key, "group") == 0) {
-                strncpy(svc->group, value, LUMID_MAX_NAME_LEN - 1);
+                copy_string_field(svc->group, sizeof(svc->group), value);
             } else if (strcmp(key, "workdir") == 0) {
-                strncpy(svc->working_dir, value, LUMID_MAX_PATH_LEN - 1);
+                copy_string_field(svc->working_dir, sizeof(svc->working_dir), value);
             }
         }
         /* === [dependencies] section / [dependencies] 段 === */
@@ -219,10 +238,16 @@ int config_parse_service(const char *path, service_t *svc)
         /* === [environment] section / [environment] 段 === */
         else if (strcmp(section, "environment") == 0) {
             if (svc->env_count < LUMID_MAX_ENV) {
-                strncpy(svc->env[svc->env_count].key, key,
-                        LUMID_MAX_NAME_LEN - 1);
-                strncpy(svc->env[svc->env_count].value, value,
-                        LUMID_MAX_PATH_LEN - 1);
+                copy_string_field(
+                    svc->env[svc->env_count].key,
+                    sizeof(svc->env[svc->env_count].key),
+                    key
+                );
+                copy_string_field(
+                    svc->env[svc->env_count].value,
+                    sizeof(svc->env[svc->env_count].value),
+                    value
+                );
                 svc->env_count++;
             }
         }
